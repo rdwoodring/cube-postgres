@@ -1,0 +1,103 @@
+version: "3.8"
+services:
+    postgres:
+        build: ./postgres
+        environment:
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=postgres
+            - POSTGRES_DB=ecom
+        ports:
+            - 5432:5432
+    cubejs:
+        image: cubejs/cube:v0.31.58
+        # build: ./
+        depends_on: 
+            - postgres
+            - cubestore_worker_1
+            - cubestore_worker_2
+            - cube_refresh_worker
+            - redis
+        ports:
+            - 4001:4000
+            - 3000:3000
+        environment:
+            # if connecting to a db running on the host machine, i.e. can access on localhost _from_ the host machine
+            # and on _windows or mac_ using `host.docker.internal` let's you interact with the host machine's
+            # localhost
+            - CUBEJS_DB_HOST=host.docker.internal
+            # same scenario, except on linux:
+            # - localhost
+            # If you are running against a database in some remote place (AWS for example)
+            # just swap host.docker.internal out for an ip address instead
+            # # If you are running the db on the local network created by docker compose,
+            # # access the service by name, as I have here
+            # - CUBEJS_DB_HOST=postgres
+            - CUBEJS_DEV_MODE=true
+            - CUBEJS_API_SECRET=jousting_turkeys
+        volumes:
+            - .:/cube/conf
+    cube_refresh_worker:
+        restart: always
+        image: cubejs/cube:v0.31.58
+        environment:
+            - CUBEJS_DB_TYPE=postgres
+            # see above
+            - CUBEJS_DB_HOST=host.docker.internal
+            - CUBEJS_DB_EXPORT_BUCKET=cubestore
+            - CUBEJS_CUBESTORE_HOST=cubestore_router
+            # same story as above. Here I am accessing the redis instance that is on the 
+            # network created by docker compose. If i was running on a standalone container
+            # with a port exposed on the host machine, I'd use docker.host.internal for mac/windows
+            # and localhost for linux
+            # If you're running a remote redis instance in the cloud or wherever, just point to the ip
+            - CUBEJS_REDIS_URL=redis://redis:6379
+            - CUBEJS_API_SECRET=jousting_turkeys
+            - CUBEJS_REFRESH_WORKER=true
+        volumes:
+            - .:/cube/conf
+
+    cubestore_router:
+        restart: always
+        image: cubejs/cubestore:v0.31.58
+        environment:
+            - CUBESTORE_WORKERS=cubestore_worker_1:10001,cubestore_worker_2:10002
+            - CUBESTORE_REMOTE_DIR=/cube/data
+            - CUBESTORE_META_PORT=9999
+            - CUBESTORE_SERVER_NAME=cubestore_router:9999
+        volumes:
+            - .cubestore:/cube/data
+
+    cubestore_worker_1:
+        restart: always
+        image: cubejs/cubestore:v0.31.58
+        environment:
+            - CUBESTORE_WORKERS=cubestore_worker_1:10001,cubestore_worker_2:10002
+            - CUBESTORE_SERVER_NAME=cubestore_worker_1:10001
+            - CUBESTORE_WORKER_PORT=10001
+            - CUBESTORE_REMOTE_DIR=/cube/data
+            - CUBESTORE_META_ADDR=cubestore_router:9999
+        volumes:
+            - .cubestore:/cube/data
+        depends_on:
+            - cubestore_router
+
+    cubestore_worker_2:
+        restart: always
+        image: cubejs/cubestore:v0.31.58
+        environment:
+            - CUBESTORE_WORKERS=cubestore_worker_1:10001,cubestore_worker_2:10002
+            - CUBESTORE_SERVER_NAME=cubestore_worker_2:10002
+            - CUBESTORE_WORKER_PORT=10002
+            - CUBESTORE_REMOTE_DIR=/cube/data
+            - CUBESTORE_META_ADDR=cubestore_router:9999
+        volumes:
+            - .cubestore:/cube/data
+        depends_on:
+            - cubestore_router
+
+    redis:
+        image: bitnami/redis:latest
+        environment:
+            - ALLOW_EMPTY_PASSWORD=yes
+        logging:
+            driver: none
