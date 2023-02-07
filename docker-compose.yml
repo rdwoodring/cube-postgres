@@ -10,6 +10,7 @@ services:
             - 5432:5432
     cubejs:
         image: cubejs/cube:v0.31.58
+        restart: always
         # build: ./
         depends_on: 
             - postgres
@@ -32,8 +33,10 @@ services:
             # # If you are running the db on the local network created by docker compose,
             # # access the service by name, as I have here
             # - CUBEJS_DB_HOST=postgres
-            - CUBEJS_DEV_MODE=true
+            - CUBEJS_DEV_MODE=false
+            - CUBEJS_REDIS_URL=redis://redis:6379
             - CUBEJS_API_SECRET=jousting_turkeys
+            - CUBEJS_CUBESTORE_HOST=cubestore_router
         volumes:
             - .:/cube/conf
     cube_refresh_worker:
@@ -96,7 +99,7 @@ services:
             - cubestore_router
 
     redis:
-        image: bitnami/redis:latest
+        image: redis:latest
         environment:
             - ALLOW_EMPTY_PASSWORD=yes
         logging:
